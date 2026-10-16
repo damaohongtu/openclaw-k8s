@@ -1,0 +1,40 @@
+# 网关的 K8s 编排权限（namespace 级最小授权）
+#
+# 网关通过 in-cluster ServiceAccount 调 K8s API：
+# - pods：动态创建/查询/删除每用户 OpenClaw Pod
+# - persistentvolumeclaims：动态创建每用户数据 PVC（只创建与读取，永不删除）
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openclaw-gateway
+  namespace: openclaw-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openclaw-gateway
+  namespace: openclaw-system
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openclaw-gateway
+  namespace: openclaw-system
+subjects:
+  - kind: ServiceAccount
+    name: openclaw-gateway
+    namespace: openclaw-system
+roleRef:
+  kind: Role
+  name: openclaw-gateway
+  apiGroup: rbac.authorization.k8s.io

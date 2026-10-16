@@ -1,0 +1,10 @@
+fastapi==0.120.1
+uvicorn[standard]==0.40.0
+pydantic==2.12.5
+pydantic-settings==2.10.1
+python-dotenv==1.2.1
+httpx==0.28.1
+websockets==15.0.1
+python-cas>=1.6.0
+itsdangerous>=2.0
+kubernetes>=28.1.0

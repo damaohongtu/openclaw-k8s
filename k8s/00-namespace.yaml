@@ -1,0 +1,7 @@
+# openclaw-system 命名空间：网关 + 每用户 OpenClaw Pod / PVC 都在这里
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw-system
+  labels:
+    app.kubernetes.io/part-of: openclaw

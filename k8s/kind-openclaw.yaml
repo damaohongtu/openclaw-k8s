@@ -1,0 +1,25 @@
+# kind 集群配置：本地验证 openclaw-k8s 多用户部署
+#
+# 前置：Docker Desktop、kubectl、kind
+# 用法：kind create cluster --config k8s/kind-openclaw.yaml
+#
+# 端口映射（宿主 → kind 节点）：
+#   19081 → 30080   openclaw 网关（http://localhost:19081/）
+#                    不能用 10080：它在浏览器封禁端口名单（amanda），
+#                    Chrome/Safari 访问会报 ERR_UNSAFE_PORT
+#                    不能用 19080：已由 eido-web-proxy 容器占用
+#   31444 → 31444   CAS NodePort（浏览器与 Pod 同 URL，见 50-cas.yaml；31443 被 eido-dce 占用）
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: openclaw
+nodes:
+  - role: control-plane
+    # 固定节点镜像：与本地缓存一致，避免创建集群时再走一次慢速 Docker Hub 拉取
+    image: kindest/node:v1.29.10
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 19081
+        protocol: TCP
+      - containerPort: 31444
+        hostPort: 31444
+        protocol: TCP

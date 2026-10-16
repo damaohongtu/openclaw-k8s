@@ -1,0 +1,28 @@
+# 用户 OpenClaw Pod 的网络隔离（多租户加固）
+#
+# ingress 只放行网关 Pod → 18789：
+# - 用户 Pod 之间互相不可达（横向隔离）
+# - 集群内其他工作负载不可直达用户 OpenClaw（唯一入口是带 CAS 会话的网关）
+# egress 不限：用户 OpenClaw 需要访问模型 API / Telegram 等外部服务
+#
+# 注意：kind 默认 CNI(kindnet) 不执行 NetworkPolicy——本清单在 kind 里
+# 无害但不生效；生产集群（Calico/Cilium 等）会实际执行。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openclaw-user-sandbox-ingress
+  namespace: openclaw-system
+spec:
+  podSelector:
+    matchLabels:
+      io.openclaw.role: user-sandbox
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openclaw-gateway
+      ports:
+        - protocol: TCP
+          port: 18789

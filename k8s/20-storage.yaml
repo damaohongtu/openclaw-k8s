@@ -1,0 +1,20 @@
+# 静态存储：网关数据卷（sandbox registry SQLite）
+#
+# 每用户数据 PVC（openclaw-user-<safe>，即 OpenClaw 的 OPENCLAW_STATE_DIR）
+# 由网关在用户首次登录后动态创建，不在本清单内。
+#
+# 网关必须单副本（Deployment 已设 Recreate）：registry 是 PVC 上的 SQLite，
+# 多副本会脑裂；扩容前需先迁移到外部存储。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openclaw-gateway-data
+  namespace: openclaw-system
+  labels:
+    app.kubernetes.io/name: openclaw-gateway
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

@@ -1,0 +1,135 @@
+# openclaw gateway（每用户 OpenClaw 沙盒编排）
+#
+# 关键约束：
+# - replicas 必须 = 1：sandbox_registry.db 是 PVC 上的 SQLite，多副本会脑裂；
+#   strategy 用 Recreate 保证滚动更新时不出现双副本同时写库
+# - 网关不含业务逻辑：Control UI / 模型 / 频道全部由用户自己的 OpenClaw Pod
+#   原生提供，网关只做 CAS 认证、Pod/PVC 编排、反向代理（含 WebSocket）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw-gateway
+  namespace: openclaw-system
+  labels:
+    app.kubernetes.io/name: openclaw-gateway
+    app.kubernetes.io/part-of: openclaw
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openclaw-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openclaw-gateway
+        app.kubernetes.io/part-of: openclaw
+    spec:
+      serviceAccountName: openclaw-gateway
+      containers:
+        - name: openclaw-gateway
+          image: damaohongtu/openclaw-gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - secretRef:
+                name: openclaw-secrets
+          env:
+            # ---------- 沙盒编排（K8s）---------- #
+            - name: OCGW_SANDBOX_MODE
+              value: k8s
+            - name: OCGW_K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # 本 Pod IP（downward API）：种子配置用它推导 trustedProxies CIDR
+            # （同 /16）；生产环境建议显式设 OCGW_K8S_TRUSTED_PROXY_CIDRS=集群 Pod CIDR
+            - name: OCGW_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # 每用户 OpenClaw 镜像（官方 Docker Hub 名；kind 验证时导入后名字保持一致）
+            - name: OCGW_USER_IMAGE
+              value: openclaw/openclaw:2026.8.1
+            - name: OCGW_USER_INTERNAL_PORT
+              value: "18789"
+            - name: OCGW_K8S_USER_STORAGE
+              value: 5Gi
+            - name: OCGW_K8S_POD_READY_TIMEOUT
+              value: "180"
+            # OCGW_K8S_STORAGE_CLASS 留空 = 集群默认 StorageClass
+            # ---------- 用户沙盒资源限额（OpenClaw Pod）---------- #
+            - name: OCGW_USER_MEM
+              value: 2Gi
+            - name: OCGW_USER_CPUS
+              value: "1.0"
+            - name: OCGW_USER_TMPFS_SIZE
+              value: 512Mi
+            - name: OCGW_SANDBOX_IDLE_TTL
+              value: "900"
+            - name: OCGW_SANDBOX_HEALTH_TTL
+              value: "15"
+            # ---------- CAS / 前端 ---------- #
+            # CAS_SERVER_URL 必须同时被浏览器与 gateway Pod 解析到同一地址：
+            # 浏览器经宿主 /etc/hosts（127.0.0.1 cas.openclaw-system.svc.cluster.local）
+            # + NodePort 31444；Pod 内走集群 DNS + Service 31444 端口。
+            - name: OCGW_CAS_SERVER_URL
+              value: http://cas.openclaw-system.svc.cluster.local:31444/cas/
+            # 注意：宿主端口必须避开浏览器封禁端口（如 10080/amanda 会 ERR_UNSAFE_PORT）
+            # 与已被占用的端口（19080 被 eido-web-proxy 占用）；kind 映射 19081→30080。
+            - name: OCGW_CAS_SERVICE_URL
+              value: http://localhost:19081/ocgw/auth/callback
+            - name: OCGW_FRONTEND_URL
+              value: http://localhost:19081/
+            - name: OCGW_AUTH_DISABLED
+              value: "False"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            # 网关持久化：sandbox_registry.db
+            - name: gateway-data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /ocgw/healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /ocgw/healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 5
+      volumes:
+        - name: gateway-data
+          persistentVolumeClaim:
+            claimName: openclaw-gateway-data
+---
+# 对外入口：NodePort 30080（浏览器 http://<node>:30080/ → 用户 OpenClaw Control UI）
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw-gateway
+  namespace: openclaw-system
+  labels:
+    app.kubernetes.io/name: openclaw-gateway
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: openclaw-gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      nodePort: 30080

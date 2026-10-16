@@ -1,0 +1,16 @@
+# 真实凭据（gen-secret.sh 生成）
+k8s/30-secret.yaml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 本地调试
+.env
+*.db
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.claude/
